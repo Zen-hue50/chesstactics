@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Tactics Trainer</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #0f0f1a 0%, #1a1a2e 50%, #16213e 100%);
+            min-height: 100vh;
+        }
+        
+        .chess-board {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5),
+                        0 0 0 1px rgba(255, 255, 255, 0.1);
+        }
+        
+        .square {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        
+        .square.light {
+            background: linear-gradient(135deg, #e8dcc4 0%, #d4c4a8 100%);
+        }
+        
+        .square.dark {
+            background: linear-gradient(135deg, #7b9b6b 0%, #5d8a4a 100%);
+        }
+        
+        .square.selected {
+            box-shadow: inset 0 0 0 4px rgba(255, 215, 0, 0.8);
+        }
+        
+        .square.valid-move::after {
+            content: '';
+            position: absolute;
+            width: 30%;
+            height: 30%;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+        }
+        
+        .square.valid-capture::after {
+            content: '';
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 4px solid rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+            box-sizing: border-box;
+        }
+        
+        .square.last-move {
+            background: linear-gradient(135deg, rgba(255, 255, 100, 0.5), rgba(200, 200, 50, 0.5)) !important;
+        }
+        
+        .square.hint {
+            animation: pulse-hint 1s infinite;
+        }
+        
+        @keyframes pulse-hint {
+            0%, 100% { box-shadow: inset 0 0 0 4px rgba(59, 130, 246, 0.5); }
+            50% { box-shadow: inset 0 0 0 4px rgba(59, 130, 246, 0.9); }
+        }
+        
+        .piece {
+            width: 85%;
+            height: 85%;
+            filter: drop-shadow(2px 2px 2px rgba(0,0,0,0.3));
+            transition: transform 0.1s ease;
+            user-select: none;
+            -webkit-user-drag: none;
+        }
+        
+        .piece:hover {
+            transform: scale(1.05);
+        }
+        
+        .piece.dragging {
+            opacity: 0.5;
+        }
+        
+        .drag-piece {
+            position: fixed;
+            pointer-events: none;
+            z-index: 1000;
+            width: 60px;
+            height: 60px;
+            filter: drop-shadow(4px 4px 8px rgba(0,0,0,0.4));
+        }
+        
+        .timer-ring {
+            transform: rotate(-90deg);
+        }
+        
+        .timer-ring circle {
+            transition: stroke-dashoffset 1s linear;
+        }
+        
+        .rating-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .difficulty-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .shake {
+            animation: shake 0.3s ease-in-out;
+        }
+        
+        @keyframes success-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(34, 197, 94, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        }
+        
+        .success-pulse {
+            animation: success-pulse 0.6s ease-out;
+        }
+        
+        .coordinate {
+            position: absolute;
+            font-size: 10px;
+            font-weight: 600;
+            opacity: 0.7;
+        }
+        
+        .coordinate.file {
+            bottom: 2px;
+            right: 4px;
+        }
+        
+        .coordinate.rank {
+            top: 2px;
+            left: 4px;
+        }
+        
+        .square.light .coordinate { color: #5d8a4a; }
+        .square.dark .coordinate { color: #e8dcc4; }
+    </style>
+</head>
+<body class="text-white">
+    <div id="app" class="min-h-screen flex flex-col">
+        <!-- Header -->
+        <header class="p-4 md:p-6">
+            <div class="max-w-4xl mx-auto flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <svg class="w-8 h-8 text-purple-400" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 22H5v-2h14v2M17.16 8.26A4.678 4.678 0 0012 3.5c-2.28 0-4.22 1.66-4.78 3.91A5.465 5.465 0 003 12.5c0 2.28 1.39 4.22 3.38 5.04L5 22h14l-1.38-4.46c1.99-.82 3.38-2.76 3.38-5.04 0-2.28-1.39-4.22-3.38-5.04-.17-.53-.43-1.02-.46-1.2z"/>
+                    </svg>
+                    <h1 class="text-xl md:text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                        Tactics Trainer
+                    </h1>
+                </div>
+                <div id="puzzleInfo" class="hidden flex items-center gap-4">
+                    <span id="ratingBadge" class="rating-badge px-3 py-1 rounded-full text-sm font-semibold"></span>
+                    <span id="turnIndicator" class="text-sm text-gray-400"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex items-center justify-center p-4">
+            <!-- Landing Screen -->
+            <div id="landingScreen" class="text-center max-w-md">
+                <div class="glass-card rounded-2xl p-8 md:p-12">
+                    <div class="mb-8">
+                        <svg class="w-20 h-20 mx-auto text-purple-400 mb-6" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 22H5v-2h14v2M17.16 8.26A4.678 4.678 0 0012 3.5c-2.28 0-4.22 1.66-4.78 3.91A5.465 5.465 0 003 12.5c0 2.28 1.39 4.22 3.38 5.04L5 22h14l-1.38-4.46c1.99-.82 3.38-2.76 3.38-5.04 0-2.28-1.39-4.22-3.38-5.04-.17-.53-.43-1.02-.46-1.2z"/>
+                        </svg>
+                        <h2 class="text-3xl font-bold mb-3">Chess Tactics</h2>
+                        <p class="text-gray-400">Sharpen your tactical vision with timed puzzles</p>
+                    </div>
+                    
+                    <!-- Difficulty Selection -->
+                    <div class="mb-8">
+                        <p class="text-sm text-gray-400 mb-3">Select Difficulty</p>
+                        <div class="flex gap-2 justify-center flex-wrap">
+                            <button onclick="setDifficulty('beginner')" class="difficulty-btn px-4 py-2 rounded-lg text-sm font-medium transition-all hover:bg-white/10" data-difficulty="beginner">
+                                Beginner<br><span class="text-xs text-gray-400">1000-1400</span>
+                            </button>
+                            <button onclick="setDifficulty('intermediate')" class="difficulty-btn active px-4 py-2 rounded-lg text-sm font-medium transition-all" data-difficulty="intermediate">
+                                Intermediate<br><span class="text-xs text-gray-400">1400-1800</span>
+                            </button>
+                            <button onclick="setDifficulty('advanced')" class="difficulty-btn px-4 py-2 rounded-lg text-sm font-medium transition-all hover:bg-white/10" data-difficulty="advanced">
+                                Advanced<br><span class="text-xs text-gray-400">1800-2500</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <button onclick="startGame()" class="btn-primary w-full py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        Start Training
+                    </button>
+                    
+                    <p class="text-xs text-gray-500 mt-4">90 seconds per puzzle • Puzzles from Lichess</p>
+                </div>
+            </div>
+
+            <!-- Game Screen -->
+            <div id="gameScreen" class="hidden w-full max-w-4xl">
+                <div class="flex flex-col lg:flex-row gap-6 items-center lg:items-start justify-center">
+                    <!-- Chess Board Container -->
+                    <div class="w-full max-w-[min(90vw,480px)]">
+                        <div id="chessBoard" class="chess-board w-full"></div>
+                        
+                        <!-- Move Input -->
+                        <div class="mt-4 flex gap-2">
+                            <input type="text" id="moveInput" placeholder="Enter move (e.g., e4, Nf3)" 
+                                class="flex-1 bg-white/10 border border-white/20 rounded-lg px-4 py-2 text-sm focus:outline-none focus:border-purple-400"
+                                onkeypress="handleMoveInput(event)">
+                            <button onclick="submitMove()" class="btn-secondary px-4 py-2 rounded-lg text-sm font-medium">
+                                Submit
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Side Panel -->
+                    <div class="w-full lg:w-64 flex flex-col gap-4">
+                        <!-- Timer -->
+                        <div class="glass-card rounded-xl p-6 text-center">
+                            <div class="relative w-32 h-32 mx-auto mb-4">
+                                <svg class="timer-ring w-full h-full" viewBox="0 0 100 100">
+                                    <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="8"/>
+                                    <circle id="timerCircle" cx="50" cy="50" r="45" fill="none" stroke="url(#timerGradient)" stroke-width="8" 
+                                        stroke-linecap="round" stroke-dasharray="283" stroke-dashoffset="0"/>
+                                    <defs>
+                                        <linearGradient id="timerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#667eea"/>
+                                            <stop offset="100%" stop-color="#764ba2"/>
+                                        </linearGradient>
+                                    </defs>
+                                </svg>
+                                <div class="absolute inset-0 flex items-center justify-center">
+                                    <span id="timerDisplay" class="text-3xl font-bold">90</span>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-400">seconds remaining</p>
+                        </div>
+                        
+                        <!-- Status -->
+                        <div id="statusCard" class="glass-card rounded-xl p-4 text-center hidden">
+                            <p id="statusText" class="font-semibold"></p>
+                        </div>
+                        
+                        <!-- Progress -->
+                        <div class="glass-card rounded-xl p-4">
+                            <div class="flex justify-between text-sm mb-2">
+                                <span class="text-gray-400">Move</span>
+                                <span id="moveProgress">1 / ?</span>
+                            </div>
+                            <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                                <div id="progressBar" class="h-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-300" style="width: 0%"></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Actions -->
+                        <div class="flex flex-col gap-2">
+                            <button onclick="showHint()" id="hintBtn" class="btn-secondary py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                                </svg>
+                                Show Hint
+                            </button>
+                            <button onclick="showSolution()" id="solutionBtn" class="btn-secondary py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                </svg>
+                                Show Solution
+                            </button>
+                            <button onclick="nextPuzzle()" id="nextBtn" class="btn-primary py-3 rounded-xl font-medium flex items-center justify-center gap-2">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/>
+                                </svg>
+                                Next Puzzle
+                            </button>
+                        </div>
+                        
+                        <!-- Stats -->
+                        <div class="glass-card rounded-xl p-4">
+                            <div class="grid grid-cols-2 gap-4 text-center">
+                                <div>
+                                    <p class="text-2xl font-bold text-green-400" id="solvedCount">0</p>
+                                    <p class="text-xs text-gray-400">Solved</p>
+                                </div>
+                                <div>
+                                    <p class="text-2xl font-bold text-red-400" id="failedCount">0</p>
+                                    <p class="text-xs text-gray-400">Failed</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="p-4 text-center text-gray-500 text-sm">
+            <p>Puzzles provided by <a href="https://lichess.org" target="_blank" class="text-purple-400 hover:underline">Lichess</a></p>
+        </footer>
+    </div>
+
+    <!-- Dragging Piece -->
+    <img id="dragPiece" class="drag-piece hidden" src="" alt="">
+
+    <script>
+        // Game State
+        let game = null;
+        let currentPuzzle = null;
+        let solutionMoves = [];
+        let currentMoveIndex = 0;
+        let timer = null;
+        let timeLeft = 90;
+        let selectedSquare = null;
+        let validMoves = [];
+        let playerColor = 'w';
+        let difficulty = 'intermediate';
+        let solved = 0;
+        let failed = 0;
+        let isGameActive = false;
+        let lastMove = null;
+        let isDragging = false;
+        let dragStartSquare = null;
+
+        // Piece SVGs
+        const pieces = {
+            'wK': `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linejoin="miter" d="M22.5 11.63V6M20 8h5"/><path fill="#fff" stroke-linecap="butt" stroke-linejoin="miter" d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"/><path fill="#fff" d="M12.5 37c5.5 3.5 14.5 3.5 20 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-2.5-7.5-12-10.5-16-4-3 6 6 10.5 6 10.5v7"/><path d="M12.5 30c5.5-3 14.5-3 20 0m-20 3.5c5.5-3 14.5-3 20 0m-20 3.5c5.5-3 14.5-3 20 0"/></g></svg>`,
+            'wQ': `<svg viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path d="M8 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zm16.5-4.5a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM41 12a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM16 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0zM33 9a2 2 0 1 1-4 0 2 2 0 1 1 4 0z"/><path stroke-linecap="butt" d="M9 26c8.5-1.5 21-1.5 27 0l2-12-7 11V11l-5.5 13.5-3-15-3 15-5.5-14V25L7 14l2 12z"/><path stroke-linecap="butt" d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><path fill="none" d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c6-1 15-1 21 0"/></g></svg>`,
+            'wR': `<svg viewBox="0 0 45 45"><g fill="#fff" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linecap="butt" d="M9 39h27v-3H9v3zm3-3v-4h21v4H12zm-1-22V9h4v2h5V9h5v2h5V9h4v5"/><path d="M34 14l-3 3H14l-3-3"/><path stroke-linecap="butt" stroke-linejoin="miter" d="M31 17v12.5H14V17"/><path d="M31 29.5l1.5 2.5h-20l1.5-2.5"/><path fill="none" stroke-linejoin="miter" d="M11 14h23"/></g></svg>`,
+            'wB': `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><g fill="#fff" stroke-linecap="butt"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.35.49-2.32.47-3-.5 1.35-1.46 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path stroke-linejoin="miter" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/></g></svg>`,
+            'wN': `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path fill="#fff" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"/><path fill="#fff" d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3"/><path fill="#000" d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zm5.433-9.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5z"/></g></svg>`,
+            'wP': `<svg viewBox="0 0 45 45"><path fill="#fff" stroke="#000" stroke-linecap="round" stroke-width="1.5" d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"/></svg>`,
+            'bK': `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path stroke-linejoin="miter" d="M22.5 11.63V6M20 8h5"/><path fill="#000" stroke-linecap="butt" stroke-linejoin="miter" d="M22.5 25s4.5-7.5 3-10.5c0 0-1-2.5-3-2.5s-3 2.5-3 2.5c-1.5 3 3 10.5 3 10.5"/><path fill="#000" d="M12.5 37c5.5 3.5 14.5 3.5 20 0v-7s9-4.5 6-10.5c-4-6.5-13.5-3.5-16 4V27v-3.5c-2.5-7.5-12-10.5-16-4-3 6 6 10.5 6 10.5v7"/><path stroke="#fff" d="M12.5 30c5.5-3 14.5-3 20 0m-20 3.5c5.5-3 14.5-3 20 0m-20 3.5c5.5-3 14.5-3 20 0"/></g></svg>`,
+            'bQ': `<svg viewBox="0 0 45 45"><g fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><g fill="#000" stroke="none"><circle cx="6" cy="12" r="2.75"/><circle cx="14" cy="9" r="2.75"/><circle cx="22.5" cy="8" r="2.75"/><circle cx="31" cy="9" r="2.75"/><circle cx="39" cy="12" r="2.75"/></g><path fill="#000" stroke-linecap="butt" d="M9 26c8.5-1.5 21-1.5 27 0l2.5-12.5L31 25l-.3-14.1-5.2 13.6-3-14.5-3 14.5-5.2-13.6L14 25 6.5 13.5 9 26z"/><path fill="#000" stroke-linecap="butt" d="M9 26c0 2 1.5 2 2.5 4 1 1.5 1 1 .5 3.5-1.5 1-1.5 2.5-1.5 2.5-1.5 1.5.5 2.5.5 2.5 6.5 1 16.5 1 23 0 0 0 1.5-1 0-2.5 0 0 .5-1.5-1-2.5-.5-2.5-.5-2 .5-3.5 1-2 2.5-2 2.5-4-8.5-1.5-18.5-1.5-27 0z"/><path fill="none" stroke="#fff" d="M11.5 30c3.5-1 18.5-1 22 0M12 33.5c6-1 15-1 21 0"/></g></svg>`,
+            'bR': `<svg viewBox="0 0 45 45"><g fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path fill="#000" stroke-linecap="butt" d="M9 39h27v-3H9v3zm3.5-7l1.5-2.5h17l1.5 2.5h-20zm-.5 4v-4h21v4H12z"/><path fill="#000" stroke-linecap="butt" stroke-linejoin="miter" d="M14 29.5v-13h17v13H14z"/><path fill="#000" stroke-linecap="butt" d="M14 16.5L11 14h23l-3 2.5H14zM11 14V9h4v2h5V9h5v2h5V9h4v5H11z"/><path fill="none" stroke="#fff" stroke-linejoin="miter" stroke-width="1" d="M12 35.5h21m-20-4h19m-18-2h17m-17-13h17M11 14h23"/></g></svg>`,
+            'bB': `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><g fill="#000" stroke-linecap="butt"><path d="M9 36c3.39-.97 10.11.43 13.5-2 3.39 2.43 10.11 1.03 13.5 2 0 0 1.65.54 3 2-.68.97-1.65.99-3 .5-3.39-.97-10.11.46-13.5-1-3.39 1.46-10.11.03-13.5 1-1.35.49-2.32.47-3-.5 1.35-1.46 3-2 3-2z"/><path d="M15 32c2.5 2.5 12.5 2.5 15 0 .5-1.5 0-2 0-2 0-2.5-2.5-4-2.5-4 5.5-1.5 6-11.5-5-15.5-11 4-10.5 14-5 15.5 0 0-2.5 1.5-2.5 4 0 0-.5.5 0 2z"/><path d="M25 8a2.5 2.5 0 1 1-5 0 2.5 2.5 0 1 1 5 0z"/></g><path stroke="#fff" stroke-linejoin="miter" d="M17.5 26h10M15 30h15m-7.5-14.5v5M20 18h5"/></g></svg>`,
+            'bN': `<svg viewBox="0 0 45 45"><g fill="none" fill-rule="evenodd" stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"><path fill="#000" d="M22 10c10.5 1 16.5 8 16 29H15c0-9 10-6.5 8-21"/><path fill="#000" d="M24 18c.38 2.91-5.55 7.37-8 9-3 2-2.82 4.34-5 4-1.042-.94 1.41-3.04 0-3-1 0 .19 1.23-1 2-1 0-4.003 1-4-4 0-2 6-12 6-12s1.89-1.9 2-3.5c-.73-.994-.5-2-.5-3 1-1 3 2.5 3 2.5h2s.78-1.992 2.5-3c1 0 1 3 1 3"/><path fill="#fff" d="M9.5 25.5a.5.5 0 1 1-1 0 .5.5 0 1 1 1 0zm5.433-9.75a.5 1.5 30 1 1-.866-.5.5 1.5 30 1 1 .866.5z"/></g></svg>`,
+            'bP': `<svg viewBox="0 0 45 45"><path fill="#000" stroke="#000" stroke-linecap="round" stroke-width="1.5" d="M22.5 9c-2.21 0-4 1.79-4 4 0 .89.29 1.71.78 2.38C17.33 16.5 16 18.59 16 21c0 2.03.94 3.84 2.41 5.03-3 1.06-7.41 5.55-7.41 13.47h23c0-7.92-4.41-12.41-7.41-13.47 1.47-1.19 2.41-3 2.41-5.03 0-2.41-1.33-4.5-3.28-5.62.49-.67.78-1.49.78-2.38 0-2.21-1.79-4-4-4z"/></svg>`
+        };
+
+        function setDifficulty(diff) {
+            difficulty = diff;
+            document.querySelectorAll('.difficulty-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.difficulty === diff) {
+                    btn.classList.add('active');
+                }
+            });
+        }
+
+        function getRatingRange() {
+            switch(difficulty) {
+                case 'beginner': return [1000, 1400];
+                case 'intermediate': return [1400, 1800];
+                case 'advanced': return [1800, 2500];
+                default: return [1400, 1800];
+            }
+        }
+
+        async function fetchPuzzle() {
+            try {
+                // Fetch random puzzle from Lichess
+                const response = await fetch('https://lichess.org/api/puzzle/next', {
+                    headers: { 'Accept': 'application/json' }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch puzzle');
+                }
+                
+                const data = await response.json();
+                return data;
+            } catch (error) {
+                console.error('Error fetching puzzle:', error);
+                // Fallback puzzle
+                return {
+                    puzzle: {
+                        id: 'fallback',
+                        rating: 1500,
+                        solution: ['e2e4', 'd7d5', 'e4d5']
+                    },
+                    game: {
+                        fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+                        pgn: ''
+                    }
+                };
+            }
+        }
+
+        async function startGame() {
+            document.getElementById('landingScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+            document.getElementById('puzzleInfo').classList.remove('hidden');
+            
+            await loadPuzzle();
+        }
+
+        async function loadPuzzle() {
+            showStatus('Loading puzzle...', 'text-gray-400');
+            
+            const data = await fetchPuzzle();
+            currentPuzzle = data;
+            
+            // Parse the puzzle
+            const pgn = data.game.pgn;
+            game = new Chess();
+            
+            // Load the game up to the puzzle position
+            if (pgn) {
+                const moves = pgn.split(' ').filter(m => !m.includes('.') && m.length > 0);
+                moves.forEach(move => {
+                    try {
+                        game.move(move);
+                    } catch(e) {}
+                });
+            }
+            
+            // Get solution moves (first move is opponent's, player responds)
+            solutionMoves = data.puzzle.solution;
+            
+            // Make the first move (opponent's move that sets up the puzzle)
+            if (solutionMoves.length > 0) {
+                const firstMove = solutionMoves[0];
+                const from = firstMove.slice(0, 2);
+                const to = firstMove.slice(2, 4);
+                const promotion = firstMove.length > 4 ? firstMove[4] : undefined;
+                
+                try {
+                    game.move({ from, to, promotion });
+                    lastMove = { from, to };
+                } catch(e) {
+                    console.error('Error making first move:', e);
+                }
+            }
+            
+            currentMoveIndex = 1; // Player starts from second move
+            playerColor = game.turn();
+            
+            // Update UI
+            document.getElementById('ratingBadge').textContent = `Rating: ${data.puzzle.rating}`;
+            document.getElementById('turnIndicator').textContent = playerColor === 'w' ? 'White to move' : 'Black to move';
+            
+            renderBoard();
+            resetTimer();
+            startTimer();
+            updateProgress();
+            hideStatus();
+            
+            isGameActive = true;
+        }
+
+        function renderBoard() {
+            const board = document.getElementById('chessBoard');
+            board.innerHTML = '';
+            
+            const files = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+            const flipped = playerColor === 'b';
+            
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const actualRow = flipped ? row : 7 - row;
+                    const actualCol = flipped ? 7 - col : col;
+                    const square = files[actualCol] + (actualRow + 1);
+                    const isLight = (actualRow + actualCol) % 2 === 1;
+                    
+                    const div = document.createElement('div');
+                    div.className = `square ${isLight ? 'light' : 'dark'}`;
+                    div.dataset.square = square;
+                    
+                    // Add coordinates
+                    if (col === 0) {
+                        const rank = document.createElement('span');
+                        rank.className = 'coordinate rank';
+                        rank.textContent = actualRow + 1;
+                        div.appendChild(rank);
+                    }
+                    if (row === 7) {
+                        const file = document.createElement('span');
+                        file.className = 'coordinate file';
+                        file.textContent = files[actualCol];
+                        div.appendChild(file);
+                    }
+                    
+                    // Add last move highlight
+                    if (lastMove && (square === lastMove.from || square === lastMove.to)) {
+                        div.classList.add('last-move');
+                    }
+                    
+                    // Add piece
+                    const piece = game.get(square);
+                    if (piece) {
+                        const pieceKey = piece.color + piece.type.toUpperCase();
+                        const pieceDiv = document.createElement('div');
+                        pieceDiv.className = 'piece';
+                        pieceDiv.innerHTML = pieces[pieceKey];
+                        pieceDiv.dataset.piece = pieceKey;
+                        div.appendChild(pieceDiv);
+                    }
+                    
+                    // Add event listeners
+                    div.addEventListener('click', () => handleSquareClick(square));
+                    div.addEventListener('mousedown', (e) => handleDragStart(e, square));
+                    div.addEventListener('touchstart', (e) => handleTouchStart(e, square), { passive: false });
+                    
+                    board.appendChild(div);
+                }
+            }
+            
+            // Add drop listeners
+            document.addEventListener('mousemove', handleDragMove);
+            document.addEventListener('mouseup', handleDragEnd);
+            document.addEventListener('touchmove', handleTouchMove, { passive: false });
+            document.addEventListener('touchend', handleTouchEnd);
+        }
+
+        function handleSquareClick(square) {
+            if (!isGameActive) return;
+            
+            const piece = game.get(square);
+            
+            if (selectedSquare) {
+                // Try to make a move
+                if (validMoves.includes(square)) {
+                    makeMove(selectedSquare, square);
+                } else if (piece && piece.color === game.turn()) {
+                    // Select new piece
+                    selectSquare(square);
+                } else {
+                    clearSelection();
+                }
+            } else if (piece && piece.color === game.turn()) {
+                selectSquare(square);
+            }
+        }
+
+        function selectSquare(square) {
+            clearSelection();
+            selectedSquare = square;
+            
+            const squareEl = document.querySelector(`[data-square="${square}"]`);
+            if (squareEl) squareEl.classList.add('selected');
+            
+            // Get valid moves
+            const moves = game.moves({ square, verbose: true });
+            validMoves = moves.map(m => m.to);
+            
+            // Show valid moves
+            validMoves.forEach(toSquare => {
+                const el = document.querySelector(`[data-square="${toSquare}"]`);
+                if (el) {
+                    const targetPiece = game.get(toSquare);
+                    el.classList.add(targetPiece ? 'valid-capture' : 'valid-move');
+                }
+            });
+        }
+
+        function clearSelection() {
+            selectedSquare = null;
+            validMoves = [];
+            document.querySelectorAll('.square').forEach(el => {
+                el.classList.remove('selected', 'valid-move', 'valid-capture', 'hint');
+            });
+        }
+
+        function handleDragStart(e, square) {
+            if (!isGameActive) return;
+            
+            const piece = game.get(square);
+            if (!piece || piece.color !== game.turn()) return;
+            
+            e.preventDefault();
+            isDragging = true;
+            dragStartSquare = square;
+            
+            selectSquare(square);
+            
+            const pieceEl = document.querySelector(`[data-square="${square}"] .piece`);
+            if (pieceEl) {
+                pieceEl.classList.add('dragging');
+                const dragPiece = document.getElementById('dragPiece');
+                dragPiece.src = 'data:image/svg+xml,' + encodeURIComponent(pieceEl.innerHTML);
+                dragPiece.classList.remove('hidden');
+                dragPiece.style.left = (e.clientX - 30) + 'px';
+                dragPiece.style.top = (e.clientY - 30) + 'px';
+            }
+        }
+
+        function handleDragMove(e) {
+            if (!isDragging) return;
+            
+            const dragPiece = document.getElementById('dragPiece');
+            dragPiece.style.left = (e.clientX - 30) + 'px';
+            dragPiece.style.top = (e.clientY - 30) + 'px';
+        }
+
+        function handleDragEnd(e) {
+            if (!isDragging) return;
+            
+            isDragging = false;
+            document.getElementById('dragPiece').classList.add('hidden');
+            
+            const pieceEl = document.querySelector(`[data-square="${dragStartSquare}"] .piece`);
+            if (pieceEl) pieceEl.classList.remove('dragging');
+            
+            // Find target square
+            const target = document.elementFromPoint(e.clientX, e.clientY);
+            const squareEl = target?.closest('.square');
+            
+            if (squareEl && validMoves.includes(squareEl.dataset.square)) {
+                makeMove(dragStartSquare, squareEl.dataset.square);
+            } else {
+                clearSelection();
+            }
+            
+            dragStartSquare = null;
+        }
+
+        function handleTouchStart(e, square) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleDragStart({ clientX: touch.clientX, clientY: touch.clientY, preventDefault: () => {} }, square);
+        }
+
+        function handleTouchMove(e) {
+            if (!isDragging) return;
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleDragMove({ clientX: touch.clientX, clientY: touch.clientY });
+        }
+
+        function handleTouchEnd(e) {
+            if (!isDragging) return;
+            const touch = e.changedTouches[0];
+            handleDragEnd({ clientX: touch.clientX, clientY: touch.clientY });
+        }
+
+        function makeMove(from, to) {
+            // Check for promotion
+            const piece = game.get(from);
+            let promotion = undefined;
+            if (piece && piece.type === 'p') {
+                const targetRank = to[1];
+                if ((piece.color === 'w' && targetRank === '8') || (piece.color === 'b' && targetRank === '1')) {
+                    promotion = 'q'; // Auto-promote to queen
+                }
+            }
+            
+            const moveStr = from + to + (promotion || '');
+            const expectedMove = solutionMoves[currentMoveIndex];
+            
+            if (moveStr === expectedMove || (expectedMove && moveStr === expectedMove.slice(0, 4) && expectedMove.length > 4)) {
+                // Correct move!
+                try {
+                    game.move({ from, to, promotion: promotion || (expectedMove && expectedMove.length > 4 ? expectedMove[4] : undefined) });
+                    lastMove = { from, to };
+                    currentMoveIndex++;
+                    
+                    clearSelection();
+                    renderBoard();
+                    updateProgress();
+                    
+                    // Check if puzzle is complete
+                    if (currentMoveIndex >= solutionMoves.length) {
+                        puzzleSolved();
+                    } else {
+                        // Make opponent's response
+                        setTimeout(() => {
+                            if (currentMoveIndex < solutionMoves.length) {
+                                const oppMove = solutionMoves[currentMoveIndex];
+                                const oppFrom = oppMove.slice(0, 2);
+                                const oppTo = oppMove.slice(2, 4);
+                                const oppPromo = oppMove.length > 4 ? oppMove[4] : undefined;
+                                
+                                game.move({ from: oppFrom, to: oppTo, promotion: oppPromo });
+                                lastMove = { from: oppFrom, to: oppTo };
+                                currentMoveIndex++;
+                                
+                                renderBoard();
+                                updateProgress();
+                                
+                                if (currentMoveIndex >= solutionMoves.length) {
+                                    puzzleSolved();
+                                }
+                            }
+                        }, 300);
+                    }
+                } catch(e) {
+                    console.error('Move error:', e);
+                    wrongMove();
+                }
+            } else {
+                wrongMove();
+            }
+        }
+
+        function handleMoveInput(e) {
+            if (e.key === 'Enter') {
+                submitMove();
+            }
+        }
+
+        function submitMove() {
+            if (!isGameActive) return;
+            
+            const input = document.getElementById('moveInput');
+            const moveText = input.value.trim();
+            
+            if (!moveText) return;
+            
+            try {
+                const move = game.move(moveText);
+                if (move) {
+                    game.undo(); // Undo to check if it matches solution
+                    makeMove(move.from, move.to);
+                } else {
+                    wrongMove();
+                }
+            } catch(e) {
+                wrongMove();
+            }
+            
+            input.value = '';
+        }
+
+        function wrongMove() {
+            const board = document.getElementById('chessBoard');
+            board.classList.add('shake');
+            setTimeout(() => board.classList.remove('shake'), 300);
+            
+            showStatus('Incorrect! Try again.', 'text-red-400');
+            setTimeout(hideStatus, 1500);
+            
+            clearSelection();
+        }
+
+        function puzzleSolved() {
+            isGameActive = false;
+            stopTimer();
+            solved++;
+            document.getElementById('solvedCount').textContent = solved;
+            
+            const board = document.getElementById('chessBoard');
+            board.classList.add('success-pulse');
+            setTimeout(() => board.classList.remove('success-pulse'), 600);
+            
+            showStatus('🎉 Correct! Puzzle solved!', 'text-green-400');
+        }
+
+        function puzzleFailed() {
+            isGameActive = false;
+            stopTimer();
+            failed++;
+            document.getElementById('failedCount').textContent = failed;
+            
+            showStatus('⏰ Time\'s up! See solution below.', 'text-red-400');
+            showSolution();
+        }
+
+        function showHint() {
+            if (!isGameActive || currentMoveIndex >= solutionMoves.length) return;
+            
+            const nextMove = solutionMoves[currentMoveIndex];
+            const from = nextMove.slice(0, 2);
+            
+            const squareEl = document.querySelector(`[data-square="${from}"]`);
+            if (squareEl) {
+                squareEl.classList.add('hint');
+            }
+        }
+
+        function showSolution() {
+            if (currentMoveIndex >= solutionMoves.length) {
+                showStatus('Puzzle already complete!', 'text-gray-400');
+                return;
+            }
+            
+            isGameActive = false;
+            stopTimer();
+            
+            const remaining = solutionMoves.slice(currentMoveIndex);
+            let delay = 0;
+            
+            remaining.forEach((move, index) => {
+                setTimeout(() => {
+                    const from = move.slice(0, 2);
+                    const to = move.slice(2, 4);
+                    const promotion = move.length > 4 ? move[4] : undefined;
+                    
+                    try {
+                        game.move({ from, to, promotion });
+                        lastMove = { from, to };
+                        renderBoard();
+                    } catch(e) {}
+                }, delay);
+                delay += 800;
+            });
+            
+            showStatus('Solution shown. Click Next Puzzle to continue.', 'text-yellow-400');
+        }
+
+        async function nextPuzzle() {
+            clearSelection();
+            await loadPuzzle();
+        }
+
+        function updateProgress() {
+            const totalMoves = Math.ceil((solutionMoves.length - 1) / 2);
+            const currentPlayerMove = Math.ceil(currentMoveIndex / 2);
+            
+            document.getElementById('moveProgress').textContent = `${Math.min(currentPlayerMove, totalMoves)} / ${totalMoves}`;
+            
+            const progress = totalMoves > 0 ? (currentPlayerMove / totalMoves) * 100 : 0;
+            document.getElementById('progressBar').style.width = `${Math.min(progress, 100)}%`;
+        }
+
+        function startTimer() {
+            timeLeft = 90;
+            updateTimerDisplay();
+            
+            timer = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    puzzleFailed();
+                }
+            }, 1000);
+        }
+
+        function stopTimer() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
+
+        function resetTimer() {
+            stopTimer();
+            timeLeft = 90;
+            updateTimerDisplay();
+        }
+
+        function updateTimerDisplay() {
+            document.getElementById('timerDisplay').textContent = timeLeft;
+            
+            const circle = document.getElementById('timerCircle');
+            const offset = 283 * (1 - timeLeft / 90);
+            circle.style.strokeDashoffset = offset;
+            
+            // Change color when low
+            if (timeLeft <= 10) {
+                circle.style.stroke = '#ef4444';
+            } else if (timeLeft <= 30) {
+                circle.style.stroke = '#f59e0b';
+            } else {
+                circle.style.stroke = 'url(#timerGradient)';
+            }
+        }
+
+        function showStatus(text, colorClass) {
+            const card = document.getElementById('statusCard');
+            const statusText = document.getElementById('statusText');
+            
+            card.classList.remove('hidden');
+            statusText.textContent = text;
+            statusText.className = `font-semibold ${colorClass}`;
+        }
+
+        function hideStatus() {
+            document.getElementById('statusCard').classList.add('hidden');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            // Preload pieces
+            Object.values(pieces);
+        });
+    </script>
+</body>
+</html>
